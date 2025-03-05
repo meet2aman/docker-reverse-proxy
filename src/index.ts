@@ -4,7 +4,7 @@ import Docker from "dockerode";
 import { Request, Response } from "express";
 import redisClient from "./lib/client";
 import httpProxy from "http-proxy";
-
+import cors from "cors";
 // new docker instance
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 
@@ -146,9 +146,10 @@ const managementAPI = express();
 
 // expresss middleware
 managementAPI.use(express.json());
+managementAPI.use(cors());
 
 // management api express server post route
-managementAPI.post("/containers", async (req: Request, res: Response) => {
+managementAPI.post("/containers/start", async (req: Request, res: Response) => {
   const { image, tag = "latest" } = await req.body;
   let imageAlreadyExists = false;
 
@@ -186,7 +187,40 @@ managementAPI.post("/containers", async (req: Request, res: Response) => {
     container: `${(await container.inspect()).Name}.localhost`,
   });
 });
+managementAPI.post(
+  "/containers/stop",
+  async (req: Request, res: Response): Promise<any> => {
+    const { containerName } = req.body;
+    if (!containerName) {
+      return res.status(301).json({
+        message: "Please Provide container name",
+      });
+    }
 
+    const ifContainerExist = await redisClient.hgetall(containerName);
+    if (!ifContainerExist) {
+      return res.status(404).json({
+        message: `No container Found with this name ${containerName}`,
+      });
+    }
+
+    if (containerName === ifContainerExist.containerName) {
+      const container = docker.getContainer(containerName);
+      const containerInfo = await container.inspect();
+      if (!containerInfo || !containerInfo.State.Running) {
+        return res
+          .status(404)
+          .json({ error: "Container is not running or does not exist" });
+      }
+      await container.stop();
+
+      res.json({
+        status: "success",
+        message: `Container ${containerName} stopped successfully.`,
+      });
+    }
+  }
+);
 // express server post route hit by postman
 managementAPI.listen(8080, () => {
   console.log(`Management API is running on PORT:8080`);
