@@ -5,6 +5,7 @@ import { Request, Response } from "express";
 import redisClient from "./lib/client";
 import httpProxy from "http-proxy";
 import cors from "cors";
+
 // new docker instance
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 
@@ -187,6 +188,7 @@ managementAPI.post("/containers/start", async (req: Request, res: Response) => {
     container: `${(await container.inspect()).Name}.localhost`,
   });
 });
+
 managementAPI.post(
   "/containers/stop",
   async (req: Request, res: Response): Promise<any> => {
@@ -213,6 +215,7 @@ managementAPI.post(
           .json({ error: "Container is not running or does not exist" });
       }
       await container.stop();
+      await redisClient.del(ifContainerExist.containerName);
 
       res.json({
         status: "success",
@@ -221,6 +224,21 @@ managementAPI.post(
     }
   }
 );
+
+managementAPI.get("/all-containers", async (req, res): Promise<any> => {
+  try {
+    const data = await docker.listContainers({ all: true });
+    return res.status(200).json({
+      data: data,
+      message: "Here Is Your All Containers",
+    });
+  } catch (error: any) {
+    console.error("Error fetching running containers:", error);
+    return res
+      .status(500)
+      .json({ error: error.message || "Internal server error" });
+  }
+});
 // express server post route hit by postman
 managementAPI.listen(8080, () => {
   console.log(`Management API is running on PORT:8080`);
